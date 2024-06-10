@@ -2,6 +2,9 @@ name: 'Tests on Windows: `nvm install`'
 
 on: [pull_request, push]
 
+permissions:
+  contents: read
+
 env:
   NVM_INSTALL_GITHUB_REPO: ${{ github.repository }}
   NVM_INSTALL_VERSION: ${{ github.sha }}
@@ -123,7 +126,7 @@ jobs:
           - ''
           - 'script'
     steps:
-      - uses: Vampire/setup-wsl@v2
+      - uses: Vampire/setup-wsl@v3
         with:
           distribution: ${{ matrix.wsl-distrib }}
           additional-packages: bash git curl ca-certificates wget
@@ -166,7 +169,7 @@ jobs:
           - ''
           - 'script'
     steps:
-      - uses: Vampire/setup-wsl@v2
+      - uses: Vampire/setup-wsl@v3
         with:
           distribution: ${{ matrix.wsl-distrib }}
           additional-packages: bash git curl ca-certificates wget
