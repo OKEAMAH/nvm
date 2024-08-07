@@ -83,7 +83,7 @@ nvm_has_colors() {
   if nvm_has tput; then
     NVM_NUM_COLORS="$(tput -T "${TERM:-vt100}" colors)"
   fi
-  [ "${NVM_NUM_COLORS:--1}" -ge 8 ]
+  [ "${NVM_NUM_COLORS:--1}" -ge 8 ] && [ "${NVM_NO_COLORS-}" != '--no-colors' ]
 }
 
 nvm_curl_libz_support() {
@@ -503,9 +503,9 @@ $(nvm_wrap_with_color_code 'y' "${warn_text}")"
 }
 
 nvm_process_nvmrc() {
-  local NVMRC_PATH="$1"
+  local NVMRC_PATH
+  NVMRC_PATH="$1"
   local lines
-  local unpaired_line
 
   lines=$(command sed 's/#.*//' "$NVMRC_PATH" | command sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | nvm_grep -v '^$')
 
@@ -515,8 +515,12 @@ nvm_process_nvmrc() {
   fi
 
   # Initialize key-value storage
-  local keys=''
-  local values=''
+  local keys
+  keys=''
+  local values
+  values=''
+  local unpaired_line
+  unpaired_line=''
 
   while IFS= read -r line; do
     if [ -z "${line}" ]; then
@@ -1094,7 +1098,7 @@ nvm_print_formatted_alias() {
   fi
   local ARROW
   ARROW='->'
-  if [ -z "${NVM_NO_COLORS}" ] && nvm_has_colors; then
+  if nvm_has_colors; then
     ARROW='\033[0;90m->\033[0m'
     if [ "_${DEFAULT}" = '_true' ]; then
       NEWLINE=" \033[${DEFAULT_COLOR}(default)\033[0m\n"
@@ -1832,7 +1836,7 @@ nvm_print_versions() {
   DEFAULT_COLOR=$(nvm_get_colors 5)
   LTS_COLOR=$(nvm_get_colors 6)
 
-  if [ -z "${NVM_NO_COLORS-}" ] && nvm_has_colors; then
+  if nvm_has_colors; then
     NVM_HAS_COLORS=1
   fi
 
@@ -2437,7 +2441,7 @@ nvm_download_artifact() {
   nvm_err "Downloading ${TARBALL_URL}..."
   nvm_download -L -C - "${PROGRESS_BAR}" "${TARBALL_URL}" -o "${TARBALL}" || (
     command rm -rf "${TARBALL}" "${tmpdir}"
-    nvm_err "Binary download from ${TARBALL_URL} failed, trying source."
+    nvm_err "download from ${TARBALL_URL} failed"
     return 4
   )
 
@@ -3558,9 +3562,13 @@ nvm() {
           EXIT_CODE=$?
         else
           EXIT_CODE=-1
+          if [ $nosource -eq 1 ]; then
+            nvm_err "Binary download is not available for ${VERSION}"
+            EXIT_CODE=3
+          fi
         fi
 
-        if [ $EXIT_CODE -ne 0 ]; then
+        if [ $EXIT_CODE -ne 0 ] && [ $nosource -ne 1 ]; then
           if [ -z "${NVM_MAKE_JOBS-}" ]; then
             nvm_get_make_jobs
           fi
@@ -3575,25 +3583,27 @@ nvm() {
         fi
       fi
 
-      if [ $EXIT_CODE -eq 0 ] && nvm_use_if_needed "${VERSION}" && nvm_install_npm_if_needed "${VERSION}"; then
-        if [ -n "${LTS-}" ]; then
-          nvm_ensure_default_set "lts/${LTS}"
+      if [ $EXIT_CODE -eq 0 ]; then
+        if nvm_use_if_needed "${VERSION}" && nvm_install_npm_if_needed "${VERSION}"; then
+          if [ -n "${LTS-}" ]; then
+            nvm_ensure_default_set "lts/${LTS}"
+          else
+            nvm_ensure_default_set "${provided_version}"
+          fi
+          if [ "${NVM_UPGRADE_NPM}" = 1 ]; then
+            nvm install-latest-npm
+            EXIT_CODE=$?
+          fi
+          if [ $EXIT_CODE -eq 0 ] && [ -z "${SKIP_DEFAULT_PACKAGES-}" ]; then
+            nvm_install_default_packages
+          fi
+          if [ $EXIT_CODE -eq 0 ] && [ -n "${REINSTALL_PACKAGES_FROM-}" ] && [ "_${REINSTALL_PACKAGES_FROM}" != "_N/A" ]; then
+            nvm reinstall-packages "${REINSTALL_PACKAGES_FROM}"
+            EXIT_CODE=$?
+          fi
         else
-          nvm_ensure_default_set "${provided_version}"
-        fi
-        if [ "${NVM_UPGRADE_NPM}" = 1 ]; then
-          nvm install-latest-npm
           EXIT_CODE=$?
         fi
-        if [ $EXIT_CODE -eq 0 ] && [ -z "${SKIP_DEFAULT_PACKAGES-}" ]; then
-          nvm_install_default_packages
-        fi
-        if [ $EXIT_CODE -eq 0 ] && [ -n "${REINSTALL_PACKAGES_FROM-}" ] && [ "_${REINSTALL_PACKAGES_FROM}" != "_N/A" ]; then
-          nvm reinstall-packages "${REINSTALL_PACKAGES_FROM}"
-          EXIT_CODE=$?
-        fi
-      else
-        EXIT_CODE=$?
       fi
 
       return $EXIT_CODE
@@ -4364,7 +4374,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" | "-v")
-      nvm_echo '0.39.7'
+      nvm_echo '0.40.0'
     ;;
     "unload")
       nvm deactivate >/dev/null 2>&1
